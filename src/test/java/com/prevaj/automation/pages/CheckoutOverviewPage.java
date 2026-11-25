@@ -2,15 +2,11 @@ package com.prevaj.automation.pages;
 
 import org.openqa.selenium.By;
 import org.openqa.selenium.WebDriver;
-import org.openqa.selenium.WebElement;
-import org.openqa.selenium.support.ui.ExpectedConditions;
-import org.openqa.selenium.support.ui.WebDriverWait;
 
 import java.math.BigDecimal;
-import java.time.Duration;
 import java.util.List;
 
-public class CheckoutOverviewPage {
+public class CheckoutOverviewPage extends BasePage {
 
     private static final By ITEM_NAME = By.cssSelector("[data-test='inventory-item-name']");
     private static final By ITEM_PRICE = By.cssSelector("[data-test='inventory-item-price']");
@@ -18,40 +14,35 @@ public class CheckoutOverviewPage {
     private static final By ITEM_TOTAL_LABEL = By.cssSelector("[data-test='subtotal-label']");
     private static final By TAX_LABEL = By.cssSelector("[data-test='tax-label']");
 
-    private final WebDriver driver;
-    private final WebDriverWait wait;
-
     public CheckoutOverviewPage(WebDriver driver) {
-        this.driver = driver;
-        this.wait = new WebDriverWait(driver, Duration.ofSeconds(10));
+        super(driver);
     }
 
     public List<String> getItemNames() {
         waitUntilLoaded();
-        return driver.findElements(ITEM_NAME).stream().map(WebElement::getText).toList();
+        return getTexts(ITEM_NAME);
     }
 
     public List<BigDecimal> getItemPrices() {
         waitUntilLoaded();
-        return driver.findElements(ITEM_PRICE).stream().map(price -> parseAmount(price.getText())).toList();
+        return getTexts(ITEM_PRICE).stream().map(CheckoutOverviewPage::parseAmount).toList();
     }
 
     public List<Integer> getItemQuantities() {
         waitUntilLoaded();
-        return driver.findElements(ITEM_QUANTITY).stream().map(quantity -> Integer.parseInt(quantity.getText())).toList();
+        return getTexts(ITEM_QUANTITY).stream().map(Integer::parseInt).toList();
     }
 
     public BigDecimal getItemTotal() {
-        return parseAmount(waitUntilLoaded().getText());
+        return parseAmount(getText(ITEM_TOTAL_LABEL));
     }
 
     public BigDecimal getTax() {
-        waitUntilLoaded();
-        return parseAmount(driver.findElement(TAX_LABEL).getText());
+        return parseAmount(getText(TAX_LABEL));
     }
 
-    private WebElement waitUntilLoaded() {
-        return wait.until(ExpectedConditions.visibilityOfElementLocated(ITEM_TOTAL_LABEL));
+    private void waitUntilLoaded() {
+        waitForVisible(ITEM_TOTAL_LABEL);
     }
 
     private static BigDecimal parseAmount(String text) {

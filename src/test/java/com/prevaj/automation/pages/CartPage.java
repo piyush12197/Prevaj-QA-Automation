@@ -3,13 +3,10 @@ package com.prevaj.automation.pages;
 import org.openqa.selenium.By;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.WebElement;
-import org.openqa.selenium.support.ui.ExpectedConditions;
-import org.openqa.selenium.support.ui.WebDriverWait;
 
-import java.time.Duration;
 import java.util.List;
 
-public class CartPage {
+public class CartPage extends BasePage {
 
     private static final By CART_LINK = By.cssSelector("[data-test='shopping-cart-link']");
     private static final By CART_BADGE = By.cssSelector("[data-test='shopping-cart-badge']");
@@ -17,16 +14,12 @@ public class CartPage {
     private static final By ITEM_QUANTITY = By.cssSelector("[data-test='item-quantity']");
     private static final By CHECKOUT_BUTTON = By.cssSelector("[data-test='checkout']");
 
-    private final WebDriver driver;
-    private final WebDriverWait wait;
-
     public CartPage(WebDriver driver) {
-        this.driver = driver;
-        this.wait = new WebDriverWait(driver, Duration.ofSeconds(10));
+        super(driver);
     }
 
     public void open() {
-        wait.until(ExpectedConditions.elementToBeClickable(CART_LINK)).click();
+        click(CART_LINK);
     }
 
     public int getBadgeCount() {
@@ -36,26 +29,26 @@ public class CartPage {
 
     public List<String> getItemNames() {
         waitUntilLoaded();
-        return driver.findElements(ITEM_NAME).stream().map(WebElement::getText).toList();
+        return getTexts(ITEM_NAME);
     }
 
     public List<Integer> getItemQuantities() {
         waitUntilLoaded();
-        return driver.findElements(ITEM_QUANTITY).stream().map(quantity -> Integer.parseInt(quantity.getText())).toList();
+        return getTexts(ITEM_QUANTITY).stream().map(Integer::parseInt).toList();
     }
 
     public void remove(String productName) {
         By removeButton = By.xpath("//*[@data-test='inventory-item'][.//*[@data-test='inventory-item-name'][normalize-space()='"
                 + productName + "']]//button[starts-with(@data-test, 'remove')]");
-        wait.until(ExpectedConditions.elementToBeClickable(removeButton)).click();
-        wait.until(ExpectedConditions.invisibilityOfElementLocated(removeButton));
+        click(removeButton);
+        waitForInvisible(removeButton);
     }
 
     public void checkout() {
-        wait.until(ExpectedConditions.elementToBeClickable(CHECKOUT_BUTTON)).click();
+        click(CHECKOUT_BUTTON);
     }
 
     private void waitUntilLoaded() {
-        wait.until(ExpectedConditions.visibilityOfElementLocated(CHECKOUT_BUTTON));
+        waitForVisible(CHECKOUT_BUTTON);
     }
 }

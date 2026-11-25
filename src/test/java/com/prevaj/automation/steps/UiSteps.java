@@ -1,5 +1,8 @@
 package com.prevaj.automation.steps;
 
+import com.prevaj.automation.cart.Basket;
+import com.prevaj.automation.cart.PriceCalculator;
+import com.prevaj.automation.driver.DriverFactory;
 import com.prevaj.automation.pages.CartPage;
 import com.prevaj.automation.pages.CheckoutInfoPage;
 import com.prevaj.automation.pages.CheckoutOverviewPage;
@@ -8,17 +11,18 @@ import com.prevaj.automation.pages.LoginPage;
 import io.cucumber.datatable.DataTable;
 import io.cucumber.java.After;
 import io.cucumber.java.Before;
+import io.cucumber.java.Scenario;
 import io.cucumber.java.en.And;
 import io.cucumber.java.en.Given;
 import io.cucumber.java.en.Then;
 import io.cucumber.java.en.When;
+import org.hamcrest.Matcher;
+import org.openqa.selenium.OutputType;
+import org.openqa.selenium.TakesScreenshot;
 import org.openqa.selenium.WebDriver;
-import org.openqa.selenium.chrome.ChromeDriver;
-import org.openqa.selenium.chrome.ChromeOptions;
+import org.openqa.selenium.WebDriverException;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -26,6 +30,7 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.comparesEqualTo;
 import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.empty;
+import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.everyItem;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
@@ -33,8 +38,7 @@ import static org.hamcrest.Matchers.not;
 
 public class UiSteps {
 
-    private final List<String> addedItems = new ArrayList<>();
-    private final List<String> removedItems = new ArrayList<>();
+    private final Basket basket = new Basket();
     private WebDriver driver;
     private LoginPage loginPage;
     private InventoryPage inventoryPage;
@@ -44,9 +48,7 @@ public class UiSteps {
 
     @Before("@ui")
     public void startBrowser() {
-        ChromeOptions options = new ChromeOptions();
-        options.setExperimentalOption("prefs", Map.of("profile.password_manager_leak_detection", false));
-        driver = new ChromeDriver(options);
+        driver = DriverFactory.createDriver();
         loginPage = new LoginPage(driver);
         inventoryPage = new InventoryPage(driver);
         cartPage = new CartPage(driver);
@@ -54,10 +56,31 @@ public class UiSteps {
         checkoutOverviewPage = new CheckoutOverviewPage(driver);
     }
 
+    /**
+     * Attaches a screenshot to a failed scenario, then always quits the browser, even if the screenshot fails.
+     */
     @After("@ui")
-    public void quitBrowser() {
-        if (driver != null) {
+    public void quitBrowser(Scenario scenario) {
+        if (driver == null) {
+            return;
+        }
+        try {
+            if (scenario.isFailed()) {
+                attachScreenshot(scenario);
+            }
+        } finally {
             driver.quit();
+        }
+    }
+
+    private void attachScreenshot(Scenario scenario) {
+        try {
+            byte[] screenshot = ((TakesScreenshot) driver).getScreenshotAs(OutputType.BYTES);
+            scenario.attach(screenshot, "image/png", "Screenshot at failure");
+        } catch (WebDriverException e) {
+            // Keep the original failure as the reported cause. The raw message leaves out Selenium's host details.
+            scenario.log("Could not capture a failure screenshot: %s: %s"
+                    .formatted(e.getClass().getSimpleName(), e.getRawMessage()));
         }
     }
 
@@ -74,8 +97,10 @@ public class UiSteps {
 
     @And("I add the following items to the basket")
     public void addItemsToBasket(List<String> productNames) {
-        productNames.forEach(inventoryPage::addToCart);
-        addedItems.addAll(productNames);
+        for (String productName : productNames) {
+            inventoryPage.addToCart(productName);
+            basket.add(productName);
+        }
     }
 
     @And("I should see {int} items added to the shopping cart")
@@ -90,16 +115,20 @@ public class UiSteps {
 
     @And("I verify that the QTY count for each item is {int}")
     public void verifyQuantityForEachItem(int expectedQuantity) {
+        List<String> cartItems = cartPage.getItemNames();
         List<Integer> quantities = cartPage.getItemQuantities();
-        assertThat(cartPage.getItemNames(), containsInAnyOrder(addedItems.toArray(String[]::new)));
-        assertThat(quantities, hasSize(addedItems.size()));
+        assertThat(cartItems, containsBasketProducts());
+        assertThat(quantities, hasSize(basket.productNames().size()));
         assertThat(quantities, everyItem(is(expectedQuantity)));
+        assertThat(quantities, equalTo(basket.quantitiesOf(cartItems)));
     }
 
     @And("I remove the following item")
     public void removeItems(List<String> productNames) {
-        productNames.forEach(cartPage::remove);
-        removedItems.addAll(productNames);
+        for (String productName : productNames) {
+            cartPage.remove(productName);
+            basket.remove(productName);
+        }
     }
 
     @And("I should see {int} items in the shopping cart")
@@ -107,7 +136,8 @@ public class UiSteps {
         List<String> cartItems = cartPage.getItemNames();
         assertThat(cartPage.getBadgeCount(), is(itemCount));
         assertThat(cartItems, hasSize(itemCount));
-        assertThat(cartItems, containsInAnyOrder(remainingItems()));
+        assertThat(cartItems, containsBasketProducts());
+        assertThat(cartPage.getItemQuantities(), equalTo(basket.quantitiesOf(cartItems)));
     }
 
     @And("I click on the CHECKOUT button")
@@ -137,32 +167,31 @@ public class UiSteps {
 
     @Then("the item total should equal the total of the item prices on the list")
     public void itemTotalShouldEqualTotalOfItemPrices() {
-        assertThat(checkoutOverviewPage.getItemNames(), containsInAnyOrder(remainingItems()));
-        assertThat(checkoutOverviewPage.getItemTotal(), comparesEqualTo(calculateItemTotal()));
+        assertThat(checkoutOverviewPage.getItemTotal(), comparesEqualTo(expectedItemTotal()));
     }
 
     @And("a tax rate of {int}% should be applied to the item total")
     public void taxRateShouldBeAppliedToItemTotal(int taxRatePercent) {
-        BigDecimal expectedTax = calculateItemTotal()
-                .multiply(BigDecimal.valueOf(taxRatePercent).movePointLeft(2))
-                .setScale(2, RoundingMode.HALF_UP);
+        BigDecimal expectedTax = PriceCalculator.tax(expectedItemTotal(), taxRatePercent);
         assertThat(checkoutOverviewPage.getTax(), comparesEqualTo(expectedTax));
     }
 
-    private BigDecimal calculateItemTotal() {
+    /**
+     * Checks that the overview lists exactly the expected products and quantities, then totals
+     * the listed prices multiplied by the expected quantities.
+     */
+    private BigDecimal expectedItemTotal() {
+        List<String> overviewItems = checkoutOverviewPage.getItemNames();
         List<BigDecimal> prices = checkoutOverviewPage.getItemPrices();
-        List<Integer> quantities = checkoutOverviewPage.getItemQuantities();
+        List<Integer> expectedQuantities = basket.quantitiesOf(overviewItems);
+        assertThat(overviewItems, containsBasketProducts());
         assertThat(prices, is(not(empty())));
-        assertThat(quantities, hasSize(prices.size()));
-
-        BigDecimal itemTotal = BigDecimal.ZERO;
-        for (int i = 0; i < prices.size(); i++) {
-            itemTotal = itemTotal.add(prices.get(i).multiply(BigDecimal.valueOf(quantities.get(i))));
-        }
-        return itemTotal;
+        assertThat(prices, hasSize(overviewItems.size()));
+        assertThat(checkoutOverviewPage.getItemQuantities(), equalTo(expectedQuantities));
+        return PriceCalculator.itemTotal(prices, expectedQuantities);
     }
 
-    private String[] remainingItems() {
-        return addedItems.stream().filter(item -> !removedItems.contains(item)).toArray(String[]::new);
+    private Matcher<Iterable<? extends String>> containsBasketProducts() {
+        return containsInAnyOrder(basket.productNames().toArray(String[]::new));
     }
 }

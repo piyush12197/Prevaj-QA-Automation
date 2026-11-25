@@ -18,6 +18,7 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.blankOrNullString;
 import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.everyItem;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.not;
@@ -48,6 +49,7 @@ public class ApiSteps {
     public void totalUsersCountEqualsNumberOfUniqueUserIds() {
         int totalUsers = response.jsonPath().getInt("total");
         assertThat(collectedUserIds, is(not(empty())));
+        assertThat(collectedUserIds, everyItem(is(notNullValue())));
         assertThat(collectedUserIds, hasSize(totalUsers));
         assertThat(new HashSet<>(collectedUserIds), hasSize(collectedUserIds.size()));
     }
@@ -103,6 +105,7 @@ public class ApiSteps {
     public void everyUserHasUniqueId() {
         List<Integer> userIds = response.jsonPath().getList("data.id", Integer.class);
         assertThat(userIds, is(not(empty())));
+        assertThat(userIds, everyItem(is(notNullValue())));
         assertThat(new HashSet<>(userIds), hasSize(userIds.size()));
     }
 
@@ -121,7 +124,9 @@ public class ApiSteps {
                 assertThat(field, response.jsonPath().getString(pathPrefix + field), equalTo(expectedValue)));
     }
 
-    private static void assertStatusCode(Response response, int statusCode) {
+    private void assertStatusCode(Response response, int statusCode) {
+        client.describeAccessRejection(response)
+                .ifPresent(rejection -> assertThat(rejection, response.statusCode(), is(statusCode)));
         response.then().log().ifValidationFails().statusCode(statusCode);
     }
 }

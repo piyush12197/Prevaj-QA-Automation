@@ -2,22 +2,16 @@ package com.prevaj.automation.pages;
 
 import org.openqa.selenium.By;
 import org.openqa.selenium.WebDriver;
-import org.openqa.selenium.support.ui.ExpectedConditions;
-import org.openqa.selenium.support.ui.WebDriverWait;
 
-import java.time.Duration;
-
-public class InventoryPage {
-
-    private final WebDriverWait wait;
+public class InventoryPage extends BasePage {
 
     public InventoryPage(WebDriver driver) {
-        this.wait = new WebDriverWait(driver, Duration.ofSeconds(10));
+        super(driver);
     }
 
     public void addToCart(String productName) {
-        wait.until(ExpectedConditions.elementToBeClickable(productButton(productName, "add-to-cart"))).click();
-        wait.until(ExpectedConditions.visibilityOfElementLocated(productButton(productName, "remove")));
+        click(productButton(productName, "add-to-cart"));
+        waitForVisible(productButton(productName, "remove"));
     }
 
     private static By productButton(String productName, String buttonPrefix) {
